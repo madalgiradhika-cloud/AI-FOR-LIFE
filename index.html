@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Jarvis AI</title>
+  <style>
+    :root {
+      --bg-main:        #ffffff;
+      --bg-chat:        #f7f9fc;
+      --text-primary:   #0d1117;
+      --text-secondary: #57606a;
+      --user-bg:        #e6f4ea;
+      --user-text:      #0d1117;
+      --assistant-bg:   #ffffff;
+      --assistant-border: #d0d7de;
+      --border:         #d0d7de;
+      --accent:         #2ea44f;
+      --accent-hover:   #2c974b;
+      --danger:         #cf222e;
+      --btn-bg:         #f6f8fa;
+      --btn-hover:      #eef2f6;
+    }
+
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 12px 20px;
+      background: var(--bg-main);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 1.18rem;
+      font-weight: 600;
+    }
+
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .header-left::before { content: "J"; color: var(--accent); font-weight: bold; }
+
+    .header-actions { display: flex; gap: 12px; }
+
+    .btn-icon {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 1px solid var(--border); background: var(--btn-bg);
+      color: var(--text-secondary); font-size: 1.1rem; cursor: pointer;
+      display: grid; place-items: center; transition: all 0.15s;
+    }
+
+    .btn-icon:hover { background: var(--btn-hover); border-color: #a5aeb8; }
+    .btn-icon.danger:hover { background: #ffeef0; border-color: var(--danger); color: var(--danger); }
+
+    #chat-container {
+      flex: 1; background: var(--bg-chat); overflow-y: auto;
+      padding: 32px 24px; display: flex; flex-direction: column; gap: 28px;
+    }
+
+    .message {
+      max-width: 82%; padding: 14px 18px; border-radius: 16px;
+      line-height: 1.5; font-size: 1.02rem;
+    }
+
+    .user { align-self: flex-end; background: var(--user-bg); color: var(--user-text); border-bottom-right-radius: 6px; }
+    .assistant { align-self: flex-start; background: var(--assistant-bg); border: 1px solid var(--assistant-border); border-bottom-left-radius: 6px; }
+
+    .message pre { background: #f6f8fa; padding: 14px; border-radius: 8px; overflow-x: auto; margin: 10px 0; border: 1px solid #d8dee4; font-size: 0.95rem; }
+    .message code { background: #f6f8fa; padding: 3px 6px; border-radius: 4px; font-family: ui-monospace, monospace; }
+
+    #input-area {
+      padding: 16px 24px; background: var(--bg-main); border-top: 1px solid var(--border);
+      display: flex; gap: 12px; box-shadow: 0 -1px 6px rgba(0,0,0,0.04);
+    }
+
+    #user-input {
+      flex: 1; padding: 14px 18px; border: 1px solid var(--border); border-radius: 999px;
+      font-size: 1.02rem; background: white; outline: none; resize: none;
+      min-height: 52px; max-height: 160px; line-height: 1.48;
+    }
+
+    #user-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46,164,79,0.12); }
+
+    button.main-send {
+      width: 52px; height: 52px; border-radius: 50%; border: none;
+      background: var(--accent); color: white; font-size: 1.32rem;
+      cursor: pointer; transition: all 0.2s;
+    }
+
+    button.main-send:hover:not(:disabled) { background: var(--accent-hover); }
+    button.main-send:disabled { background: #94a3b8; cursor: not-allowed; }
+
+    .loading { font-style: italic; color: var(--text-secondary); }
+
+    footer {
+      text-align: center; padding: 12px; font-size: 0.9rem;
+      color: var(--text-secondary); border-top: 1px solid var(--border);
+      background: var(--bg-main);
+    }
+
+    @media (max-width: 600px) {
+      #chat-container { padding: 20px 16px; }
+      header, #input-area { padding: 12px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">Jarvis AI</div>
+  <div class="header-actions">
+    <button class="btn-icon" id="btn-voice" title="Dictate (voice input)">🎤</button>
+    <button class="btn-icon danger" id="btn-clear" title="Clear conversation">🗑</button>
+  </div>
+</header>
+
+<div id="chat-container"></div>
+
+<div id="input-area">
+  <textarea id="user-input" rows="1" placeholder="Ask Jarvis anything..."></textarea>
+  <button class="main-send" id="send-btn" title="Send">→</button>
+</div>
+
+<footer>Made by Atharva Phadnis</footer>
+
+<script>
+// ────────────────────────────────────────────────
+const OPENROUTER_API_KEY = "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";
+const MODEL = "deepseek/deepseek-r1";
+// ────────────────────────────────────────────────
+
+const chatContainer = document.getElementById("chat-container");
+const userInput     = document.getElementById("user-input");
+const sendBtn       = document.getElementById("send-btn");
+const btnClear      = document.getElementById("btn-clear");
+const btnVoice      = document.getElementById("btn-voice");
+
+let abortController = null;
+let recognition = null;
+
+function addMessage(role, content, isLoading = false) {
+  const div = document.createElement("div");
+  div.className = `message ${role}`;
+  if (isLoading) {
+    div.classList.add("loading");
+    div.textContent = "Thinking...";
+  } else {
+    div.innerHTML = formatContent(content);
+  }
+  chatContainer.appendChild(div);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+  return div;
+}
+
+function formatContent(text) {
+  return text
+    .replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${escapeHtml(code.trim())}</code></pre>`)
+    .replace(/`([^`]+)`/g, (_, code) => `<code>${escapeHtml(code)}</code>`)
+    .replace(/\n/g, "<br>");
+}
+
+function escapeHtml(unsafe) {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function autoGrow(element) {
+  element.style.height = "auto";
+  element.style.height = (element.scrollHeight) + "px";
+}
+
+userInput.addEventListener("input", () => {
+  autoGrow(userInput);
+});
+
+userInput.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+sendBtn.addEventListener("click", sendMessage);
+
+async function sendMessage() {
+  const text = userInput.value.trim();
+  if (!text) return;
+
+  addMessage("user", text);
+  userInput.value = "";
+  autoGrow(userInput);
+
+  sendBtn.disabled = true;
+
+  const loadingMsg = addMessage("assistant", "", true);
+
+  abortController = new AbortController();
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: abortController.signal,
+      headers: {
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": window.location.origin,       
+        "X-Title": "Jarvis AI",                       
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: "system", content: "You are Jarvis, a helpful, clever and slightly sarcastic AI assistant. Be concise, witty when appropriate, and extremely capable." },
+          { role: "user",   content: text }
+        ],
+        temperature: 0.7,
+        max_tokens: 2048,
+        stream: false   
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error ${response.status}`);
+    }
+
+    const data = await response.json();
+    const reply = data.choices?.[0]?.message?.content || "No response";
+
+    loadingMsg.classList.remove("loading");
+    loadingMsg.innerHTML = formatContent(reply);
+
+  } catch (err) {
+    if (err.name === "AbortError") {
+      loadingMsg.innerHTML = "Request cancelled.";
+    } else {
+      loadingMsg.innerHTML = `Error: ${err.message}`;
+    }
+    loadingMsg.style.color = "#dc2626";
+  } finally {
+    sendBtn.disabled = false;
+    abortController = null;
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+}
+
+btnClear.addEventListener("click", () => {
+  if (confirm("Clear conversation?")) {
+    chatContainer.innerHTML = "";
+  }
+});
+
+if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = "en-US";
+
+  recognition.onresult = e => {
+    const transcript = e.results[0][0].transcript.trim();
+    if (transcript) {
+      userInput.value = transcript;
+      autoGrow(userInput);
+      sendMessage();
+    }
+  };
+
+  recognition.onerror = e => {
+    console.error("Voice error:", e.error);
+    alert("Voice input error: " + e.error);
+  };
+
+  btnVoice.addEventListener("click", () => {
+    try {
+      recognition.start();
+      btnVoice.style.background = "#ffeef0";
+      btnVoice.style.color = "#cf222e";
+      setTimeout(() => {
+        btnVoice.style.background = "";
+        btnVoice.style.color = "";
+      }, 8000);
+    } catch (err) {
+      alert("Voice recognition not supported or blocked.");
+    }
+  });
+} else {
+  btnVoice.disabled = true;
+  btnVoice.title = "Voice not supported in this browser";
+}
+
+</script>
+</body>
+</html>
